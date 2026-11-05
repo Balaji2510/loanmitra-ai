@@ -16,29 +16,40 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, conversationHistory = [], language = 'en', context = {} } = req.body;
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
+
+    const { message, conversationHistory = [], language = 'en', context = {} } = body || {};
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Valid "message" string is required.' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
     // Grounding system prompt for fintech advisory
-    const systemInstruction = `You are "LoanMitra AI Copilot", an elite fintech loan advisory assistant for Indian financial advisors and loan agencies.
+    const systemInstruction = `You are "LoanMitra AI Copilot", an elite fintech loan advisory assistant designed for Indian loan advisors and DSAs.
 Language Support: You are fully trilingual in Tamil (தமிழ்), English, and Tanglish (Tamil written in English script).
-Response Language Rule: If the user communicates in Tamil, respond in fluent, professional Tamil. If in Tanglish, respond in friendly Tanglish. If in English, respond in crisp, professional English.
+Response Language Rule:
+- If the user communicates in Tamil, respond in fluent, natural, professional Tamil.
+- If the user writes in Tanglish, respond in warm, natural Tanglish.
+- If in English, respond in crisp, professional English.
 
 CRITICAL FINANCIAL GUARDRAILS:
-1. Never guarantee loan approval. All assessments are preliminary and subject to official lender underwriting and verification.
-2. Never invent interest rates or loan policies. Refer to typical verified benchmark rates (e.g., Home Loans ~8.4%-9.5%, Personal Loans ~10.5%-16%, Business Loans ~13%-18%) and instruct the advisor to check exact lender rate cards.
-3. Calculate FOIR (Fixed Obligation to Income Ratio) accurately: Ideal FOIR is 40% to 50% for personal loans, up to 55%-60% for secured home loans.
-4. When asked to generate customer messages or reminders, craft ready-to-send polite WhatsApp/SMS templates in the requested language (Tamil/Tanglish/English) with clear document checklists.
-
-Advisor Context Available:
-- Current City / Focus: Tamil Nadu / Indian Metros & Tier-2
-- Top Partner Lenders: HDFC Bank, SBI, ICICI Bank, Axis Bank, Bajaj Finserv, Tata Capital, Muthoot Finance.
-- User Role: Loan Advisor`;
+1. Never guarantee loan approval. All assessments are preliminary and subject to official lender underwriting and document verification.
+2. Ground interest rates in typical benchmark ranges:
+   - Home Loans: ~8.4% - 9.5% (SBI, HDFC)
+   - Personal Loans: ~10.5% - 16% (HDFC, ICICI, Bajaj)
+   - Business Loans: ~13% - 18% (ICICI, NBFCs)
+   - Gold Loans: ~9.9% - 16% (Muthoot Finance)
+3. Calculate FOIR (Fixed Obligation to Income Ratio) accurately: Standard FOIR benchmark is 50% for personal loans, up to 55%-60% for home loans.
+4. When asked to draft WhatsApp/SMS reminder templates, write polite, ready-to-send messages with clear document lists in the requested language.`;
 
     // If Gemini API Key is configured, make real call to Gemini API
     if (apiKey && apiKey !== 'your_gemini_api_key_here') {
@@ -49,46 +60,60 @@ Advisor Context Available:
         })),
         {
           role: 'user',
-          parts: [{ text: `${message}\n\nContext: ${JSON.stringify(context || {})}` }],
+          parts: [{ text: `${message}\n\n[Context: Advisor Workspace, Preferred Language: ${language}, Context: ${JSON.stringify(context || {})}]` }],
         },
       ];
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            systemInstruction: {
-              parts: [{ text: systemInstruction }],
-            },
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 1000,
-            },
-          }),
-        }
-      );
+      // Try gemini-1.5-flash or gemini-2.0-flash
+      const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+      let lastError = null;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Gemini API Error:', errorText);
-        throw new Error(`Gemini API returned status ${response.status}`);
+      for (const model of modelsToTry) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents,
+                systemInstruction: {
+                  parts: [{ text: systemInstruction }],
+                },
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 1200,
+                },
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (reply) {
+              return res.status(200).json({
+                reply,
+                provider: model,
+                language,
+                timestamp: new Date().toISOString(),
+              });
+            }
+          } else {
+            const errBody = await response.text();
+            console.error(`Gemini model ${model} error:`, response.status, errBody);
+            lastError = errBody;
+          }
+        } catch (fetchErr) {
+          console.error(`Fetch error for ${model}:`, fetchErr);
+          lastError = fetchErr.message;
+        }
       }
 
-      const data = await response.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
-
-      return res.status(200).json({
-        reply,
-        provider: 'gemini-1.5-flash',
-        language,
-        timestamp: new Date().toISOString(),
-      });
+      console.warn('Gemini direct API calls failed, using fallback. Last error:', lastError);
     }
 
-    // High-Fidelity Intelligent Deterministic Fallback if API Key not yet supplied
+    // High-Fidelity Intelligent Deterministic Fallback
     const lower = message.toLowerCase();
     let reply = '';
 
@@ -105,7 +130,7 @@ Advisor Context Available:
    - Form 16 / ITR
 
 *குறிப்பு: இது உத்தேச தகுதி மட்டுமே. வங்கியின் இறுதி ஒப்புதலுக்கு ஆவண சரிபார்ப்பு அவசியம்.*`;
-    } else if (lower.includes('reminder') || lower.includes('document reminder') || lower.includes('message in tamil')) {
+    } else if (lower.includes('reminder') || lower.includes('document reminder') || lower.includes('message in tamil') || lower.includes('whatsapp')) {
       reply = `இதோ வாடிக்கையாளருக்கு அனுப்பக்கூடிய WhatsApp/SMS செய்தி மாதிரி:
 
 "வணக்கம் திரு/திருமதி [பெயர்],
