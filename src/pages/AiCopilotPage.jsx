@@ -16,6 +16,12 @@ import {
   ShieldCheck,
   Lightbulb,
   MessageSquare,
+  Volume2,
+  VolumeX,
+  Mic,
+  MicOff,
+  Square,
+  Radio,
 } from 'lucide-react';
 
 export function AiCopilotPage() {
@@ -44,6 +50,150 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const chatEndRef = useRef(null);
+
+  // Voice Assistant state
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    return localStorage.getItem('loanmitra_auto_speak') === 'true';
+  });
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  // Stop speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const stopSpeaking = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+    setSpeakingMessageId(null);
+  };
+
+  const speakText = (text, msgId = null) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Speech synthesis is not supported in this browser.');
+      return;
+    }
+
+    if (isSpeaking && speakingMessageId === msgId) {
+      stopSpeaking();
+      return;
+    }
+
+    stopSpeaking();
+
+    // Clean markdown and formatting symbols for natural speech
+    const cleanText = text
+      .replace(/[*#_`~>-]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    if (language === 'ta') {
+      const tamilVoice = voices.find((v) => v.lang.toLowerCase().includes('ta'));
+      if (tamilVoice) utterance.voice = tamilVoice;
+      utterance.lang = 'ta-IN';
+    } else {
+      const inVoice = voices.find(
+        (v) => v.lang === 'en-IN' || v.lang.toLowerCase().includes('india') || v.lang.startsWith('en')
+      );
+      if (inVoice) utterance.voice = inVoice;
+      utterance.lang = 'en-IN';
+    }
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setSpeakingMessageId(msgId);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    };
+
+    utterance.onerror = (err) => {
+      console.warn('Speech synthesis error:', err);
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleAutoSpeak = () => {
+    const nextVal = !autoSpeak;
+    setAutoSpeak(nextVal);
+    localStorage.setItem('loanmitra_auto_speak', String(nextVal));
+    if (!nextVal) stopSpeaking();
+  };
+
+  const toggleListening = () => {
+    const SpeechRecognition =
+      typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+    if (!SpeechRecognition) {
+      alert('Voice dictation is supported in Google Chrome, Microsoft Edge, and Safari.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = language === 'ta' ? 'ta-IN' : 'en-IN';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map((result) => result[0].transcript)
+          .join('');
+        setInput(transcript);
+      };
+
+      recognition.onerror = (err) => {
+        console.error('Speech recognition error:', err);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (e) {
+      console.error('Speech recognition start failed:', e);
+      setIsListening(false);
+    }
+  };
 
   const quickPrompts = [
     {
@@ -75,6 +225,8 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
   const handleSend = async (textToSend) => {
     const query = textToSend || input;
     if (!query.trim() || loading) return;
+
+    stopSpeaking();
 
     const userMessage = {
       id: `usr-${Date.now()}`,
@@ -109,17 +261,21 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
           id: `bot-${Date.now()}`,
           role: 'assistant',
           content: data.reply,
-          provider: data.provider || 'gemini-1.5-flash',
+          provider: data.provider || 'gemini-3.5-flash',
           isDemoMode: data.isDemoMode,
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, botReply]);
+
+        // Auto speak response if enabled
+        if (autoSpeak && data.reply) {
+          speakText(data.reply, botReply.id);
+        }
       } else {
         throw new Error('API request failed');
       }
     } catch (err) {
       console.error('Chat Error:', err);
-      // Fallback response
       const fallbackReply = {
         id: `bot-${Date.now()}`,
         role: 'assistant',
@@ -130,6 +286,9 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, fallbackReply]);
+      if (autoSpeak) {
+        speakText(fallbackReply.content, fallbackReply.id);
+      }
     } finally {
       setLoading(false);
     }
@@ -161,27 +320,73 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
             </Badge>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {t('ai.copilotSubtitle')}
+            Voice-enabled advisor copilot with speech synthesis and voice commands
           </p>
         </div>
 
-        <button
-          onClick={() =>
-            setMessages([
-              {
-                id: 'msg-reset',
-                role: 'assistant',
-                content: 'Conversation history cleared. How can I help with your loan files now?',
-                timestamp: new Date().toISOString(),
-              },
-            ])
-          }
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title="Reset Conversation"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Auto Speak Toggle */}
+          <button
+            onClick={toggleAutoSpeak}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+              autoSpeak
+                ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-600 shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+            }`}
+            title="Toggle automatic AI voice response"
+          >
+            {autoSpeak ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">Auto Speak:</span>
+            <span>{autoSpeak ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {/* Stop speech button if currently speaking */}
+          {isSpeaking && (
+            <button
+              onClick={stopSpeaking}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1 animate-pulse shadow-sm"
+              title="Stop Speaking"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              <span>Stop Voice</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              stopSpeaking();
+              setMessages([
+                {
+                  id: 'msg-reset',
+                  role: 'assistant',
+                  content: 'Conversation history cleared. How can I help with your loan files now?',
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }}
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Reset Conversation"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {/* Voice Status Indicator Banner */}
+      {isSpeaking && (
+        <div className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500/10 via-electric-500/10 to-transparent border border-cyan-500/20 flex items-center justify-between text-xs text-cyan-700 dark:text-cyanAccent-300">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-cyan-500 animate-ping" />
+            <span className="font-semibold">AI Voice Assistant is speaking aloud...</span>
+          </div>
+          <button
+            onClick={stopSpeaking}
+            className="font-bold underline hover:text-rose-500 transition-colors"
+          >
+            Click to stop audio
+          </button>
+        </div>
+      )}
 
       {/* Quick Questions Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
@@ -203,6 +408,8 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
       <Card className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
+          const isCurrentSpeaking = isSpeaking && speakingMessageId === msg.id;
+
           return (
             <div
               key={msg.id}
@@ -224,6 +431,8 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
                 className={`relative group rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
                   isUser
                     ? 'bg-gradient-to-r from-electric-600 to-electric-500 text-white shadow-md shadow-electric-500/20'
+                    : isCurrentSpeaking
+                    ? 'bg-cyan-50/80 dark:bg-navy-900 border-2 border-cyanAccent-400 text-navy-900 dark:text-slate-100 shadow-lg shadow-cyanAccent-500/10'
                     : 'bg-slate-50 dark:bg-navy-900/80 text-navy-900 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800'
                 }`}
               >
@@ -232,28 +441,56 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
                   {msg.content}
                 </div>
 
-                {/* Footer copy button & provider badge */}
+                {/* Footer copy & Voice button */}
                 {!isUser && (
-                  <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3 text-cyanAccent-500" /> Grounded Banking Guidelines
+                  <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 gap-3">
+                    <span className="flex items-center gap-1 truncate">
+                      <ShieldCheck className="w-3 h-3 text-cyanAccent-500 shrink-0" />
+                      <span>Grounded Banking Guidelines</span>
                     </span>
-                    <button
-                      onClick={() => copyToClipboard(msg.id, msg.content)}
-                      className="hover:text-electric-600 dark:hover:text-cyanAccent-400 flex items-center gap-1 font-semibold"
-                    >
-                      {copiedId === msg.id ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-500" />
-                          <span>Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      {/* Speak / Stop Button */}
+                      <button
+                        onClick={() => speakText(msg.content, msg.id)}
+                        className={`flex items-center gap-1 font-semibold transition-colors ${
+                          isCurrentSpeaking
+                            ? 'text-rose-500 font-bold'
+                            : 'hover:text-electric-600 dark:hover:text-cyanAccent-400'
+                        }`}
+                        title={isCurrentSpeaking ? 'Stop speaking' : 'Speak message aloud'}
+                      >
+                        {isCurrentSpeaking ? (
+                          <>
+                            <Square className="w-3 h-3 fill-current text-rose-500" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3 h-3" />
+                            <span>Speak</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Copy Button */}
+                      <button
+                        onClick={() => copyToClipboard(msg.id, msg.content)}
+                        className="hover:text-electric-600 dark:hover:text-cyanAccent-400 flex items-center gap-1 font-semibold"
+                      >
+                        {copiedId === msg.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -275,23 +512,49 @@ I am grounded in verified Indian banking guidelines (HDFC, SBI, ICICI, Axis, Baj
         <div ref={chatEndRef} />
       </Card>
 
-      {/* Input bar */}
+      {/* Input bar with Mic Voice input */}
       <div className="relative">
         <textarea
           rows="2"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={t('ai.inputPlaceholder')}
-          className="w-full pl-4 pr-14 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-surface-darkCard text-xs sm:text-sm text-navy-900 dark:text-white focus:ring-2 focus:ring-electric-500 focus:outline-none shadow-sm resize-none font-tamil"
+          placeholder={
+            isListening
+              ? '🎙️ Listening to your voice... Speak now in Tamil or English'
+              : t('ai.inputPlaceholder')
+          }
+          className={`w-full pl-4 pr-24 py-3 rounded-2xl border bg-white dark:bg-surface-darkCard text-xs sm:text-sm text-navy-900 dark:text-white focus:ring-2 focus:ring-electric-500 focus:outline-none shadow-sm resize-none font-tamil transition-all ${
+            isListening
+              ? 'border-rose-500 ring-2 ring-rose-400/30 bg-rose-50/20'
+              : 'border-slate-200 dark:border-slate-700'
+          }`}
         />
-        <button
-          onClick={() => handleSend()}
-          disabled={!input.trim() || loading}
-          className="absolute right-3 bottom-3 p-2.5 rounded-xl bg-gradient-to-r from-electric-600 to-cyanAccent-600 text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+
+        <div className="absolute right-3 bottom-3 flex items-center gap-1.5">
+          {/* Mic Button */}
+          <button
+            type="button"
+            onClick={toggleListening}
+            className={`p-2.5 rounded-xl border transition-all ${
+              isListening
+                ? 'bg-rose-500 text-white border-rose-600 animate-pulse shadow-md shadow-rose-500/30'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+            title={isListening ? 'Stop Listening' : 'Speak to AI (Voice Input)'}
+          >
+            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+
+          {/* Send Button */}
+          <button
+            onClick={() => handleSend()}
+            disabled={!input.trim() || loading}
+            className="p-2.5 rounded-xl bg-gradient-to-r from-electric-600 to-cyanAccent-600 text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

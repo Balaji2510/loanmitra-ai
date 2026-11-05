@@ -364,6 +364,44 @@ export function DataProvider({ children }) {
     return newApp;
   };
 
+  const updateApplication = (id, updatedFields) => {
+    setApplications((prev) =>
+      prev.map((app) => {
+        if (app.id !== id) return app;
+        const requested_amount =
+          updatedFields.requested_amount !== undefined
+            ? Number(updatedFields.requested_amount)
+            : app.requested_amount;
+        const interest_rate =
+          updatedFields.interest_rate !== undefined
+            ? Number(updatedFields.interest_rate)
+            : app.interest_rate;
+        const tenure_months =
+          updatedFields.tenure_months !== undefined
+            ? Number(updatedFields.tenure_months)
+            : app.tenure_months;
+
+        let calculated_emi = app.calculated_emi;
+        if (requested_amount > 0 && interest_rate > 0 && tenure_months > 0) {
+          const r = interest_rate / (12 * 100);
+          const n = tenure_months;
+          const factor = Math.pow(1 + r, n);
+          calculated_emi = Math.round((requested_amount * r * factor) / (factor - 1));
+        }
+
+        return {
+          ...app,
+          ...updatedFields,
+          requested_amount,
+          interest_rate,
+          tenure_months,
+          calculated_emi,
+          updated_at: new Date().toISOString(),
+        };
+      })
+    );
+  };
+
   const updateApplicationStatus = (id, newStatus, note = '') => {
     setApplications((prev) =>
       prev.map((app) => {
@@ -490,6 +528,7 @@ export function DataProvider({ children }) {
         updateCustomer,
         deleteCustomer,
         addApplication,
+        updateApplication,
         updateApplicationStatus,
         addFollowup,
         markFollowupCompleted,

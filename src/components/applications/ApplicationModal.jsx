@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { useData } from '../../contexts/DataContext';
 import { useLanguage } from '../../locales/i18n';
 
-export function ApplicationModal({ isOpen, onClose }) {
-  const { customers, addApplication } = useData();
+export function ApplicationModal({ isOpen, onClose, applicationToEdit = null }) {
+  const { customers, addApplication, updateApplication } = useData();
   const { t } = useLanguage();
 
   const [formData, setFormData] = useState({
@@ -19,21 +19,61 @@ export function ApplicationModal({ isOpen, onClose }) {
     internal_notes: '',
   });
 
+  useEffect(() => {
+    if (applicationToEdit) {
+      setFormData({
+        customer_id: applicationToEdit.customer_id || customers[0]?.id || '',
+        lender_name: applicationToEdit.lender_name || 'HDFC Bank',
+        loan_type: applicationToEdit.loan_type || 'personal',
+        requested_amount: applicationToEdit.requested_amount || 500000,
+        tenure_months: applicationToEdit.tenure_months || 48,
+        interest_rate: applicationToEdit.interest_rate || 10.75,
+        status: applicationToEdit.status || 'new_lead',
+        internal_notes: applicationToEdit.internal_notes || '',
+      });
+    } else {
+      setFormData({
+        customer_id: customers[0]?.id || '',
+        lender_name: 'HDFC Bank',
+        loan_type: 'personal',
+        requested_amount: 500000,
+        tenure_months: 48,
+        interest_rate: 10.75,
+        status: 'new_lead',
+        internal_notes: '',
+      });
+    }
+  }, [applicationToEdit, isOpen]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const cust = customers.find((c) => c.id === formData.customer_id);
 
     // Calculate initial EMI
-    const r = formData.interest_rate / (12 * 100);
-    const n = formData.tenure_months;
+    const r = Number(formData.interest_rate) / (12 * 100);
+    const n = Number(formData.tenure_months);
     const factor = Math.pow(1 + r, n);
-    const calculated_emi = Math.round((formData.requested_amount * r * factor) / (factor - 1));
+    const calculated_emi = Math.round((Number(formData.requested_amount) * r * factor) / (factor - 1));
 
-    addApplication({
-      ...formData,
-      customer_name: cust ? cust.full_name : 'Customer',
-      calculated_emi,
-    });
+    if (applicationToEdit) {
+      updateApplication(applicationToEdit.id, {
+        ...formData,
+        customer_name: cust ? cust.full_name : applicationToEdit.customer_name,
+        requested_amount: Number(formData.requested_amount),
+        tenure_months: Number(formData.tenure_months),
+        interest_rate: Number(formData.interest_rate),
+        calculated_emi,
+      });
+    } else {
+      addApplication({
+        ...formData,
+        customer_name: cust ? cust.full_name : 'Customer',
+        requested_amount: Number(formData.requested_amount),
+        tenure_months: Number(formData.tenure_months),
+        interest_rate: Number(formData.interest_rate),
+        calculated_emi,
+      });
+    }
     onClose();
   };
 
@@ -41,8 +81,8 @@ export function ApplicationModal({ isOpen, onClose }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={t('applications.newApplication')}
-      subtitle="Initiate a new loan file for a registered customer"
+      title={applicationToEdit ? 'Edit Loan Application Details' : t('applications.newApplication')}
+      subtitle={applicationToEdit ? `Updating parameters for ${applicationToEdit.customer_name}` : "Initiate a new loan file for a registered customer"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

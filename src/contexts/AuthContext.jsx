@@ -73,12 +73,31 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Update profile handler
-  const updateProfile = (updatedFields) => {
+  const updateProfile = async (updatedFields) => {
     setProfile((prev) => {
       const updated = { ...prev, ...updatedFields };
-      localStorage.setItem('loanmitra_advisor_profile', JSON.stringify(updated));
+      try {
+        localStorage.setItem('loanmitra_advisor_profile', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to write profile to local storage', e);
+      }
       return updated;
     });
+
+    if (isLiveSupabaseConfigured && user?.id) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: updatedFields.full_name,
+            phone: updatedFields.phone,
+            preferred_language: updatedFields.preferred_language,
+          })
+          .eq('id', user.id);
+      } catch (err) {
+        console.warn('Could not sync profile to live Supabase:', err);
+      }
+    }
   };
 
   // Login handler

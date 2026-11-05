@@ -27,6 +27,7 @@ export function ApplicationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [appToEdit, setAppToEdit] = useState(null);
   const [appForStatusUpdate, setAppForStatusUpdate] = useState(null);
   const [selectedAppDetail, setSelectedAppDetail] = useState(null);
 
@@ -164,13 +165,20 @@ export function ApplicationsPage() {
                         </span>
                       </td>
                       <td className="p-4 sm:p-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setAppToEdit(app)}
+                            title="Edit Loan Details"
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 flex items-center gap-1"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit Loan</span>
+                          </button>
                           <button
                             onClick={() => setAppForStatusUpdate(app)}
                             className="px-2.5 py-1 rounded-lg text-xs font-bold text-electric-600 dark:text-cyanAccent-400 bg-electric-50 dark:bg-electric-500/10 hover:bg-electric-100 dark:hover:bg-electric-500/20 border border-electric-200 dark:border-electric-500/30 flex items-center gap-1"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            <span>Update Stage</span>
+                            <span>Stage</span>
                           </button>
                           <button
                             onClick={() => setSelectedAppDetail(app)}
@@ -230,6 +238,17 @@ export function ApplicationsPage() {
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <Button
+                variant="outline"
+                size="sm"
+                icon={Edit3}
+                onClick={() => {
+                  setAppToEdit(selectedAppDetail);
+                  setSelectedAppDetail(null);
+                }}
+              >
+                Edit Loan Parameters
+              </Button>
+              <Button
                 variant="primary"
                 size="sm"
                 icon={Edit3}
@@ -243,6 +262,15 @@ export function ApplicationsPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Edit Application Modal */}
+      {appToEdit && (
+        <ApplicationModal
+          isOpen={!!appToEdit}
+          onClose={() => setAppToEdit(null)}
+          applicationToEdit={appToEdit}
+        />
       )}
     </div>
   );
