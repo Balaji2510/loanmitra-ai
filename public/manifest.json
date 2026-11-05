@@ -1,0 +1,22 @@
+{
+  "short_name": "LoanMitra",
+  "name": "LoanMitra AI - Loan Advisory Platform",
+  "description": "Smart Loans. Faster Approvals. Bilingual AI Loan Advisory & CRM Platform.",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#101B35",
+  "theme_color": "#101B35",
+  "display": "standalone",
+  "orientation": "portrait"
+}
