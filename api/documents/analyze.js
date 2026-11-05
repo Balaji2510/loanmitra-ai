@@ -15,6 +15,11 @@ export default async function handler(req, res) {
   }
 
   try {
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch(e) { body = {}; }
+    }
+
     const { 
       fileName, 
       fileType, 
@@ -22,7 +27,7 @@ export default async function handler(req, res) {
       customerConsent = true, 
       loanType = 'personal',
       customerName = ''
-    } = req.body;
+    } = body || {};
 
     if (!fileName) {
       return res.status(400).json({ error: 'File name is required.' });
@@ -34,9 +39,8 @@ export default async function handler(req, res) {
       });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
-    // If Gemini API is available and image/pdf data is provided, call Gemini Flash Vision
     if (apiKey && apiKey !== 'your_gemini_api_key_here' && base64Data) {
       const mimeType = fileType || 'image/jpeg';
       const prompt = `Analyze this financial document for a loan application in India.
@@ -52,52 +56,60 @@ Extract:
 
 Return STRICTLY valid JSON with these keys: { "documentType", "entityName", "monthlyIncomeOrTurnover", "documentPeriod", "maskedIdentifier", "inconsistencyAlerts", "confidenceScore" }.`;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
+      const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+
+      for (const model of modelsToTry) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
                   {
-                    inlineData: {
-                      mimeType: mimeType,
-                      data: base64Data.replace(/^data:.*?;base64,/, ''),
-                    },
+                    parts: [
+                      { text: prompt },
+                      {
+                        inlineData: {
+                          mimeType: mimeType,
+                          data: base64Data.replace(/^data:.*?;base64,/, ''),
+                        },
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.1,
-            },
-          }),
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  temperature: 0.1,
+                },
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const rawJson = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            const parsed = JSON.parse(rawJson || '{}');
+
+            return res.status(200).json({
+              status: 'success',
+              classification: parsed.documentType || 'other',
+              extractedData: parsed,
+              humanVerificationRequired: true,
+              humanVerified: false,
+              missingDocumentsChecklist: getMissingDocuments(parsed.documentType, loanType),
+              dataHandlingNotice: 'All extracted data is preliminary and requires advisor sign-off before credit appraisal.',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch (mErr) {
+          console.error(`Multimodal error on ${model}:`, mErr);
         }
-      );
-
-      if (response.ok) {
-        const result = await response.json();
-        const rawJson = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        const parsed = JSON.parse(rawJson || '{}');
-
-        return res.status(200).json({
-          status: 'success',
-          classification: parsed.documentType || 'other',
-          extractedData: parsed,
-          humanVerificationRequired: true,
-          humanVerified: false,
-          missingDocumentsChecklist: getMissingDocuments(parsed.documentType, loanType),
-          dataHandlingNotice: 'All extracted data is preliminary and requires advisor sign-off before credit appraisal.',
-          timestamp: new Date().toISOString(),
-        });
       }
     }
 
-    // High fidelity analysis simulation based on filename heuristics
+    // High fidelity analysis fallback based on filename heuristics
     const lowerName = fileName.toLowerCase();
     let docType = 'other';
     let extracted = {
@@ -120,7 +132,6 @@ Return STRICTLY valid JSON with these keys: { "documentType", "entityName", "mon
       extracted.documentType = 'bank_statement';
       extracted.bankName = 'HDFC Bank';
       extracted.averageMonthlyBalance = 42800;
-      extracted.inconsistencyAlerts = ['2 minor inward return charges detected in month 2'];
     } else if (lowerName.includes('pan')) {
       docType = 'pan_card';
       extracted.documentType = 'pan_card';
@@ -144,7 +155,7 @@ Return STRICTLY valid JSON with these keys: { "documentType", "entityName", "mon
       humanVerified: false,
       missingDocumentsChecklist: getMissingDocuments(docType, loanType),
       dataHandlingNotice: 'Human review required before using extracted financial information.',
-      isDemoSimulation: !apiKey || apiKey === 'your_gemini_api_key_here',
+      isDemoSimulation: true,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

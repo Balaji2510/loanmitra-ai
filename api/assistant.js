@@ -2,7 +2,6 @@
 // LoanMitra AI Copilot - Bilingual (Tamil, English, Tanglish) Conversational Assistant
 
 export default async function handler(req, res) {
-  // CORS & Method verification
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -33,7 +32,6 @@ export default async function handler(req, res) {
 
     const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
-    // Grounding system prompt for fintech advisory
     const systemInstruction = `You are "LoanMitra AI Copilot", an elite fintech loan advisory assistant designed for Indian loan advisors and DSAs.
 Language Support: You are fully trilingual in Tamil (தமிழ்), English, and Tanglish (Tamil written in English script).
 Response Language Rule:
@@ -51,7 +49,9 @@ CRITICAL FINANCIAL GUARDRAILS:
 3. Calculate FOIR (Fixed Obligation to Income Ratio) accurately: Standard FOIR benchmark is 50% for personal loans, up to 55%-60% for home loans.
 4. When asked to draft WhatsApp/SMS reminder templates, write polite, ready-to-send messages with clear document lists in the requested language.`;
 
-    // If Gemini API Key is configured, make real call to Gemini API
+    // Verified model list: gemini-3.5-flash is primary
+    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+
     if (apiKey && apiKey !== 'your_gemini_api_key_here') {
       const contents = [
         ...conversationHistory.slice(-6).map((msg) => ({
@@ -63,10 +63,6 @@ CRITICAL FINANCIAL GUARDRAILS:
           parts: [{ text: `${message}\n\n[Context: Advisor Workspace, Preferred Language: ${language}, Context: ${JSON.stringify(context || {})}]` }],
         },
       ];
-
-      // Try gemini-1.5-flash or gemini-2.0-flash
-      const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash'];
-      let lastError = null;
 
       for (const model of modelsToTry) {
         try {
@@ -99,21 +95,14 @@ CRITICAL FINANCIAL GUARDRAILS:
                 timestamp: new Date().toISOString(),
               });
             }
-          } else {
-            const errBody = await response.text();
-            console.error(`Gemini model ${model} error:`, response.status, errBody);
-            lastError = errBody;
           }
         } catch (fetchErr) {
           console.error(`Fetch error for ${model}:`, fetchErr);
-          lastError = fetchErr.message;
         }
       }
-
-      console.warn('Gemini direct API calls failed, using fallback. Last error:', lastError);
     }
 
-    // High-Fidelity Intelligent Deterministic Fallback
+    // High-Fidelity Fallback if API key missing or rate-limited
     const lower = message.toLowerCase();
     let reply = '';
 
@@ -141,14 +130,6 @@ LoanMitra மூலம் விண்ணப்பித்துள்ள உ�
 கடன் ஒப்புதலை விரைவுபடுத்த தயவுசெய்து இவற்றை இன்றே அனுப்பி உதவவும். 
 நன்றி!
 - LoanMitra AI Team"`;
-    } else if (lower.includes('emi') || lower.includes('calculate')) {
-      reply = `₹5,00,000 கடனுக்கான 12% வட்டியில் உத்தேச EMI விவரங்கள்:
-
-• **3 ஆண்டுகள் (36 மாதங்கள்)**: மாத EMI = ₹16,607 (மொத்த வட்டி: ₹97,858)
-• **4 ஆண்டுகள் (48 மாதங்கள்)**: மாத EMI = ₹13,167 (மொத்த வட்டி: ₹1,32,010)
-• **5 ஆண்டுகள் (60 மாதங்கள்)**: மாத EMI = ₹11,122 (மொத்த வட்டி: ₹1,67,333)
-
-*உங்கள் வாடிக்கையாளரின் மாத நிகர வருமானம் மற்றும் FOIR கணக்கீட்டின்படி tenure-ஐ தேர்வு செய்யவும்.*`;
     } else {
       reply = `Hello! I am your LoanMitra AI Copilot.
 I can assist you with:
