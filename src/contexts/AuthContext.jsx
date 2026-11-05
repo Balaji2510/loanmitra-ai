@@ -3,48 +3,25 @@ import { supabase, isLiveSupabaseConfigured } from '../services/supabase';
 
 const AuthContext = createContext(null);
 
-const DEMO_USERS = {
-  super_admin: {
-    id: 'b0000000-0000-0000-0000-000000000001',
-    organization_id: 'a0000000-0000-0000-0000-000000000001',
-    organization_name: 'LoanMitra Prime Advisory Services',
-    full_name: 'Rajesh K (Super Admin)',
-    email: 'admin@loanmitra.ai',
-    phone: '+91 98401 12345',
-    role: 'super_admin',
-    preferred_language: 'ta',
-    commission_split_pct: 60.0,
-  },
-  company_admin: {
-    id: 'b0000000-0000-0000-0000-000000000002',
-    organization_id: 'a0000000-0000-0000-0000-000000000001',
-    organization_name: 'LoanMitra Prime Advisory Services',
-    full_name: 'Meenakshi Sundaram (Branch Admin)',
-    email: 'meenakshi@loanmitra.ai',
-    phone: '+91 98402 56789',
-    role: 'company_admin',
-    preferred_language: 'ta',
-    commission_split_pct: 55.0,
-  },
-  loan_advisor: {
-    id: 'b0000000-0000-0000-0000-000000000003',
-    organization_id: 'a0000000-0000-0000-0000-000000000001',
-    organization_name: 'LoanMitra Prime Advisory Services',
-    full_name: 'Suresh Kumar (Senior Loan Advisor)',
-    email: 'suresh@loanmitra.ai',
-    phone: '+91 98403 98765',
-    role: 'loan_advisor',
-    preferred_language: 'tanglish',
-    commission_split_pct: 50.0,
-  },
+const DEFAULT_ADVISOR = {
+  id: 'b0000000-0000-0000-0000-000000000003',
+  organization_id: 'a0000000-0000-0000-0000-000000000001',
+  organization_name: 'LoanMitra Advisory Services',
+  full_name: 'Suresh Kumar',
+  title: 'Senior Loan Advisor',
+  email: 'advisor@loanmitra.ai',
+  phone: '+91 98403 98765',
+  role: 'loan_advisor',
+  preferred_language: 'ta',
+  commission_split_pct: 100.0,
+  license_no: 'LM-ADV-TN-2025-084',
 };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(() => {
-    // Check saved demo user in localStorage or default to senior advisor
-    const saved = localStorage.getItem('loanmitra_demo_role');
-    return DEMO_USERS[saved] || DEMO_USERS.loan_advisor;
+    const saved = localStorage.getItem('loanmitra_advisor_profile');
+    return saved ? JSON.parse(saved) : DEFAULT_ADVISOR;
   });
   const [loading, setLoading] = useState(false);
   const [isDemo, setIsDemo] = useState(!isLiveSupabaseConfigured);
@@ -59,7 +36,6 @@ export function AuthProvider({ children }) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser(session.user);
-          // Fetch linked profile from database
           const { data: prof, error } = await supabase
             .from('profiles')
             .select('*, organizations(name)')
@@ -70,12 +46,13 @@ export function AuthProvider({ children }) {
             setProfile({
               ...prof,
               organization_name: prof.organizations?.name || 'LoanMitra Advisory',
+              role: 'loan_advisor',
             });
             setIsDemo(false);
           }
         }
       } catch (err) {
-        console.warn('Supabase auth session check failed, using active profile:', err);
+        console.warn('Supabase auth session check failed, using active advisor profile:', err);
       } finally {
         setLoading(false);
       }
@@ -95,6 +72,15 @@ export function AuthProvider({ children }) {
     return () => subscription?.unsubscribe();
   }, []);
 
+  // Update profile handler
+  const updateProfile = (updatedFields) => {
+    setProfile((prev) => {
+      const updated = { ...prev, ...updatedFields };
+      localStorage.setItem('loanmitra_advisor_profile', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // Login handler
   const login = async (email, password) => {
     setLoading(true);
@@ -106,11 +92,7 @@ export function AuthProvider({ children }) {
         setIsDemo(false);
         return { success: true };
       } else {
-        // Find matching demo user or use loan advisor
-        const matchedKey = Object.keys(DEMO_USERS).find((k) => DEMO_USERS[k].email === email) || 'loan_advisor';
-        const demoProf = DEMO_USERS[matchedKey];
-        setProfile(demoProf);
-        localStorage.setItem('loanmitra_demo_role', matchedKey);
+        setProfile(DEFAULT_ADVISOR);
         setIsDemo(true);
         return { success: true };
       }
@@ -121,33 +103,12 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Switch demo roles instantly for review/demonstration
-  const switchDemoRole = (roleKey) => {
-    if (DEMO_USERS[roleKey]) {
-      setProfile(DEMO_USERS[roleKey]);
-      localStorage.setItem('loanmitra_demo_role', roleKey);
-    }
-  };
-
   // Sign out handler
   const logout = async () => {
     if (isLiveSupabaseConfigured) {
       await supabase.auth.signOut();
     }
     setUser(null);
-    // Reset to loan advisor for quick exploration
-    setProfile(DEMO_USERS.loan_advisor);
-    localStorage.removeItem('loanmitra_demo_role');
-  };
-
-  const isSuperAdmin = profile?.role === 'super_admin';
-  const isCompanyAdmin = profile?.role === 'company_admin' || profile?.role === 'super_admin';
-  const isAdvisor = profile?.role === 'loan_advisor';
-
-  const hasRole = (allowedRoles = []) => {
-    if (!profile) return false;
-    if (profile.role === 'super_admin') return true;
-    return allowedRoles.includes(profile.role);
   };
 
   return (
@@ -157,14 +118,10 @@ export function AuthProvider({ children }) {
         profile,
         loading,
         isDemo,
-        isSuperAdmin,
-        isCompanyAdmin,
-        isAdvisor,
-        hasRole,
+        isAdvisor: true,
         login,
         logout,
-        switchDemoRole,
-        availableDemoRoles: DEMO_USERS,
+        updateProfile,
       }}
     >
       {children}

@@ -12,16 +12,15 @@ import {
   BadgePercent,
   Sparkles,
   FileScan,
-  ShieldCheck,
   User,
   LogOut,
   ChevronRight,
-  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 
 export function Sidebar({ isOpen, onClose }) {
-  const { profile, logout, switchDemoRole, isSuperAdmin, isCompanyAdmin } = useAuth();
+  const { profile, logout } = useAuth();
   const { t } = useLanguage();
 
   const navigation = [
@@ -35,11 +34,6 @@ export function Sidebar({ isOpen, onClose }) {
     { name: t('nav.aiCopilot'), href: '/ai-copilot', icon: Sparkles, highlight: true },
     { name: t('nav.documents'), href: '/documents', icon: FileScan },
   ];
-
-  // Include admin if privileged
-  if (isCompanyAdmin || isSuperAdmin) {
-    navigation.push({ name: t('nav.admin'), href: '/admin', icon: ShieldCheck });
-  }
 
   return (
     <>
@@ -69,7 +63,7 @@ export function Sidebar({ isOpen, onClose }) {
                   LoanMitra<span className="text-cyanAccent-400">.AI</span>
                 </span>
                 <span className="text-[10px] bg-electric-500/20 text-electric-400 border border-electric-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
-                  BILINGUAL
+                  ADVISOR
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium tracking-wide">
@@ -79,36 +73,23 @@ export function Sidebar({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* User Role & Demo Switcher Banner */}
+        {/* Advisor Badge Card */}
         <div className="p-3.5 mx-3 my-2.5 rounded-xl bg-navy-800/60 border border-navy-700/80">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-electric-600/30 flex items-center justify-center text-electric-400 font-bold text-xs border border-electric-500/30">
-                {profile?.full_name?.charAt(0) || 'U'}
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-xs font-bold text-white truncate">{profile?.full_name}</p>
-                <p className="text-[10px] text-cyanAccent-400 font-medium capitalize">
-                  {profile?.role?.replace('_', ' ')}
-                </p>
-              </div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-electric-600 to-cyanAccent-500 flex items-center justify-center text-white font-extrabold text-xs shadow-sm">
+              {profile?.full_name?.charAt(0) || 'A'}
+            </div>
+            <div className="overflow-hidden flex-1">
+              <p className="text-xs font-bold text-white truncate">{profile?.full_name}</p>
+              <p className="text-[11px] text-cyanAccent-400 font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" />
+                <span>{profile?.title || 'Loan Advisor'}</span>
+              </p>
             </div>
           </div>
-
-          {/* Quick Role Switcher for demonstration */}
-          <div className="mt-2.5 pt-2 border-t border-navy-700/60 flex items-center justify-between">
-            <span className="text-[10px] text-slate-400 flex items-center gap-1">
-              <ShieldAlert className="w-3 h-3 text-cyanAccent-400" /> Demo Role:
-            </span>
-            <select
-              value={profile?.role}
-              onChange={(e) => switchDemoRole(e.target.value)}
-              className="text-[11px] bg-navy-900 text-slate-200 border border-navy-600 rounded px-1.5 py-0.5 focus:outline-none focus:border-cyanAccent-400 cursor-pointer"
-            >
-              <option value="loan_advisor">Loan Advisor</option>
-              <option value="company_admin">Branch Admin</option>
-              <option value="super_admin">Super Admin</option>
-            </select>
+          <div className="mt-2 pt-2 border-t border-navy-700/60 flex items-center justify-between text-[10px] text-slate-400">
+            <span>Status: <strong className="text-emerald-400">Active Licensed</strong></span>
+            <span className="font-mono text-slate-500">TN-2025</span>
           </div>
         </div>
 
@@ -147,7 +128,7 @@ export function Sidebar({ isOpen, onClose }) {
           })}
         </div>
 
-        {/* Footer Settings & Logout */}
+        {/* Footer Profile & Sign Out */}
         <div className="p-3 border-t border-navy-800/80 space-y-1">
           <NavLink
             to="/profile"

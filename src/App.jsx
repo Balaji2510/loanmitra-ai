@@ -16,10 +16,9 @@ import { FollowupsPage } from './pages/FollowupsPage';
 import { CommissionsPage } from './pages/CommissionsPage';
 import { AiCopilotPage } from './pages/AiCopilotPage';
 import { DocumentsPage } from './pages/DocumentsPage';
-import { AdminPage } from './pages/AdminPage';
 import { ProfilePage } from './pages/ProfilePage';
 
-function ProtectedRoute({ children, allowedRoles }) {
+function ProtectedRoute({ children }) {
   const { profile, loading } = useAuth();
 
   if (loading) {
@@ -28,11 +27,6 @@ function ProtectedRoute({ children, allowedRoles }) {
         <div className="w-8 h-8 rounded-full border-2 border-electric-500 border-t-transparent animate-spin" />
       </div>
     );
-  }
-
-  // Check role authorization if restricted
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role) && profile.role !== 'super_admin') {
-    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -49,7 +43,7 @@ export default function App() {
                 {/* Public Auth Routes */}
                 <Route path="/login" element={<LoginPage />} />
 
-                {/* Protected Advisory App Layout */}
+                {/* Loan Advisor Dedicated Platform */}
                 <Route
                   path="/"
                   element={
@@ -67,14 +61,6 @@ export default function App() {
                   <Route path="commissions" element={<CommissionsPage />} />
                   <Route path="ai-copilot" element={<AiCopilotPage />} />
                   <Route path="documents" element={<DocumentsPage />} />
-                  <Route
-                    path="admin"
-                    element={
-                      <ProtectedRoute allowedRoles={['company_admin', 'super_admin']}>
-                        <AdminPage />
-                      </ProtectedRoute>
-                    }
-                  />
                   <Route path="profile" element={<ProfilePage />} />
                 </Route>
 
